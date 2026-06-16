@@ -59,6 +59,48 @@ prompt_port() {
   done
 }
 
+replace_default_route() {
+  if ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE" 2>/tmp/openvpn-route-error.$$; then
+    rm -f /tmp/openvpn-route-error.$$
+    return
+  fi
+
+  if grep -q "Nexthop has invalid gateway" /tmp/openvpn-route-error.$$; then
+    echo "Gateway is outside the interface subnet, retrying with onlink..."
+    rm -f /tmp/openvpn-route-error.$$
+    ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE" onlink
+    return
+  fi
+
+  cat /tmp/openvpn-route-error.$$ >&2
+  rm -f /tmp/openvpn-route-error.$$
+  exit 1
+}
+
+ensure_route_table() {
+  local table_name="ovpn${INDEX}"
+
+  if grep -qE "^[[:space:]]*${TABLE}[[:space:]]+${table_name}([[:space:]]*)?$" /etc/iproute2/rt_tables; then
+    return
+  fi
+
+  echo "${TABLE} ${table_name}" >> /etc/iproute2/rt_tables
+}
+
+pick_route_table() {
+  local table="$1"
+
+  while grep -qE "^[[:space:]]*${table}[[:space:]]+" /etc/iproute2/rt_tables; do
+    table=$((table + 1))
+  done
+
+  echo "$table"
+}
+
+gateway_from_ip() {
+  awk -F. '{print $1 "." $2 "." $3 ".1"}' <<< "$IP"
+}
+
 choose_base_client() {
   local found=()
   local f=""
@@ -132,7 +174,7 @@ VPN_OCTET=$((7 + INDEX))
 VPN_NET="10.${VPN_OCTET}.0.0"
 VPN_CIDR="10.${VPN_OCTET}.0.0/24"
 VPN_MASK="255.255.255.0"
-TABLE=$((100 + INDEX))
+TABLE="$(pick_route_table "$((98 + INDEX))")"
 
 [[ ! -f "$NEW_SERVER" ]] || { echo "ERROR: exists: $NEW_SERVER"; exit 1; }
 [[ ! -f "$NEW_CLIENT" ]] || { echo "ERROR: exists: $NEW_CLIENT"; exit 1; }
@@ -177,10 +219,7 @@ GATEWAY="$(
 )"
 
 if [[ -z "$GATEWAY" ]]; then
-  GATEWAY="$(
-    ip route show default \
-      | awk '/default/ {print $3; exit}'
-  )"
+  GATEWAY="$(gateway_from_ip)"
 fi
 
 [[ -n "$GATEWAY" ]] || { echo "ERROR: cannot detect gateway"; exit 1; }
@@ -225,7 +264,8 @@ cp "$BASE_CLIENT" "$NEW_CLIENT"
 
 sed -i -E "s|^[[:space:]]*remote[[:space:]]+[^[:space:]]+[[:space:]]+[0-9]+|remote $IP $PORT|" "$NEW_CLIENT"
 
-ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE"
+ensure_route_table
+replace_default_route
 
 ip rule show | grep -q "from $IP lookup $TABLE" || \
   ip rule add from "$IP" table "$TABLE"

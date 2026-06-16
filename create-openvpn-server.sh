@@ -60,20 +60,24 @@ prompt_port() {
 }
 
 replace_default_route() {
-  if ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE" 2>/tmp/openvpn-route-error.$$; then
-    rm -f /tmp/openvpn-route-error.$$
+  local route_error
+
+  route_error="$(mktemp)"
+
+  if ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE" 2>"$route_error"; then
+    rm -f "$route_error"
     return
   fi
 
-  if grep -q "Nexthop has invalid gateway" /tmp/openvpn-route-error.$$; then
+  if grep -q "Nexthop has invalid gateway" "$route_error"; then
     echo "Gateway is outside the interface subnet, retrying with onlink..."
-    rm -f /tmp/openvpn-route-error.$$
+    rm -f "$route_error"
     ip route replace default via "$GATEWAY" dev "$DEV" table "$TABLE" onlink
     return
   fi
 
-  cat /tmp/openvpn-route-error.$$ >&2
-  rm -f /tmp/openvpn-route-error.$$
+  cat "$route_error" >&2
+  rm -f "$route_error"
   exit 1
 }
 

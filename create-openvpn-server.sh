@@ -59,6 +59,33 @@ prompt_port() {
   done
 }
 
+confirm_overwrite() {
+  local file="$1"
+  local answer=""
+
+  if [[ ! -e "$file" ]]; then
+    return
+  fi
+
+  while true; do
+    read -rp "File exists: $file. Overwrite? [y/N]: " answer
+
+    case "$answer" in
+      y|Y|yes|YES)
+        rm -f "$file"
+        return
+        ;;
+      ""|n|N|no|NO)
+        echo "ERROR: exists: $file"
+        exit 1
+        ;;
+      *)
+        echo "Please answer y or n"
+        ;;
+    esac
+  done
+}
+
 replace_default_route() {
   local route_error
 
@@ -170,8 +197,8 @@ VPN_CIDR="10.${VPN_OCTET}.0.0/24"
 VPN_MASK="255.255.255.0"
 TABLE="$(pick_route_table "$((98 + INDEX))")"
 
-[[ ! -f "$NEW_SERVER" ]] || { echo "ERROR: exists: $NEW_SERVER"; exit 1; }
-[[ ! -f "$NEW_CLIENT" ]] || { echo "ERROR: exists: $NEW_CLIENT"; exit 1; }
+confirm_overwrite "$NEW_SERVER"
+confirm_overwrite "$NEW_CLIENT"
 
 if [[ -z "$IP" ]]; then
   echo "Available public IPv4 addresses:"

@@ -28,7 +28,19 @@ prompt_positive_number() {
 }
 
 get_default_port() {
-  awk '$1 == "port" && $2 ~ /^[0-9]+$/ {print $2; exit}' "$BASE_SERVER"
+  local max_port
+
+  max_port="$(
+    awk '$1 == "port" && $2 ~ /^[0-9]+$/ && $2 > max {max = $2} END {if (max) print max}' \
+      /etc/openvpn/server/*.conf 2>/dev/null
+  )"
+
+  if [[ -n "$max_port" && "$max_port" -lt 65535 ]]; then
+    echo $((max_port + 1))
+    return
+  fi
+
+  awk '$1 == "port" && $2 ~ /^[0-9]+$/ && $2 < 65535 {print $2 + 1; exit}' "$BASE_SERVER"
 }
 
 prompt_port() {

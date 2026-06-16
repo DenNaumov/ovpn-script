@@ -81,20 +81,10 @@ replace_default_route() {
   exit 1
 }
 
-ensure_route_table() {
-  local table_name="ovpn${INDEX}"
-
-  if grep -qE "^[[:space:]]*${TABLE}[[:space:]]+${table_name}([[:space:]]*)?$" /etc/iproute2/rt_tables; then
-    return
-  fi
-
-  echo "${TABLE} ${table_name}" >> /etc/iproute2/rt_tables
-}
-
 pick_route_table() {
   local table="$1"
 
-  while grep -qE "^[[:space:]]*${table}[[:space:]]+" /etc/iproute2/rt_tables; do
+  while ip route show table "$table" 2>/dev/null | grep -q . || ip rule show | grep -qE "lookup ${table}([[:space:]]|$)"; do
     table=$((table + 1))
   done
 
@@ -268,7 +258,6 @@ cp "$BASE_CLIENT" "$NEW_CLIENT"
 
 sed -i -E "s|^[[:space:]]*remote[[:space:]]+[^[:space:]]+[[:space:]]+[0-9]+|remote $IP $PORT|" "$NEW_CLIENT"
 
-ensure_route_table
 replace_default_route
 
 ip rule show | grep -q "from $IP lookup $TABLE" || \

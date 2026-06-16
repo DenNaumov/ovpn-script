@@ -122,6 +122,17 @@ gateway_from_ip() {
   awk -F. '{print $1 "." $2 "." $3 ".1"}' <<< "$IP"
 }
 
+print_routing_commands() {
+  echo "Routing commands:"
+  echo "  ip route replace default via $GATEWAY dev $DEV table $TABLE"
+  echo "  # If the previous command fails with \"Nexthop has invalid gateway\", run:"
+  echo "  ip route replace default via $GATEWAY dev $DEV table $TABLE onlink"
+  echo "  ip rule show | grep -q 'from $IP lookup $TABLE' || ip rule add from $IP table $TABLE"
+  echo "  ip rule show | grep -q 'from $VPN_CIDR lookup $TABLE' || ip rule add from $VPN_CIDR table $TABLE"
+  echo "  iptables -t nat -C POSTROUTING -s $VPN_CIDR -o $DEV -j SNAT --to-source $IP 2>/dev/null || iptables -t nat -A POSTROUTING -s $VPN_CIDR -o $DEV -j SNAT --to-source $IP"
+  echo
+}
+
 choose_base_client() {
   local found=()
   local f=""
@@ -256,6 +267,8 @@ echo "  port:       $PORT"
 echo "  subnet:     $VPN_CIDR"
 echo "  table:      $TABLE"
 echo
+
+print_routing_commands
 
 cp "$BASE_SERVER" "$NEW_SERVER"
 
